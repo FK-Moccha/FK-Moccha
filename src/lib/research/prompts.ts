@@ -2,10 +2,11 @@ import type { TripBriefing, ResearchCategory } from "@/lib/schemas";
 import { briefingSummary, JSON_ONLY_RULE } from "./briefingText";
 
 const SYSTEM_BASE =
-  "Du bist ein erfahrener, akribischer Reiseplaner-Rechercheassistent. Du nutzt das Web-Search-Tool, " +
-  "um aktuelle, reale Preise, Verfügbarkeiten und Buchungslinks zu finden. Du recherchierst gründlich " +
-  "(mehrere Suchen, verschiedene Quellen) bevor du antwortest. Du hältst dich strikt an das geforderte " +
-  "JSON-Ausgabeformat und übernimmst keine Preise oder Links, die nicht aus echten Suchergebnissen stammen.";
+  "Du bist ein erfahrener, akribischer Reiseplaner-Rechercheassistent mit Zugriff auf aktuelle " +
+  "Websuche, um reale Preise, Verfügbarkeiten und Buchungslinks zu finden. Du recherchierst " +
+  "gründlich (mehrere Suchen, verschiedene Quellen) bevor du antwortest. Du hältst dich strikt an " +
+  "das geforderte JSON-Ausgabeformat und übernimmst keine Preise oder Links, die nicht aus echten " +
+  "Suchergebnissen stammen.";
 
 interface PromptSpec {
   system: string;

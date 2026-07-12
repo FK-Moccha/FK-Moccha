@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, TextBlock } from "@anthropic-ai/sdk/resources/messages";
 import type { ZodTypeAny, z } from "zod";
+import { AIConfigError } from "./errors";
+import { extractJson } from "./jsonExtract";
 
 const MODEL = "claude-opus-4-8";
 
@@ -8,8 +10,9 @@ let _client: Anthropic | null = null;
 
 function getClient(): Anthropic {
   if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error(
-      "ANTHROPIC_API_KEY ist nicht gesetzt. Bitte in .env eintragen (siehe .env.example).",
+    throw new AIConfigError(
+      "ANTHROPIC_API_KEY fehlt. AI_PROVIDER=anthropic ist gesetzt, aber kein Key hinterlegt — " +
+        "trage ihn in die .env-Datei ein, oder entferne AI_PROVIDER, um stattdessen Perplexity zu nutzen.",
     );
   }
   if (!_client) {
@@ -18,32 +21,12 @@ function getClient(): Anthropic {
   return _client;
 }
 
-function stripJsonFences(raw: string): string {
-  let text = raw.trim();
-  if (text.startsWith("```")) {
-    text = text.replace(/^```(?:json)?/i, "").replace(/```\s*$/, "");
-  }
-  // Some responses may include leading prose before the JSON object/array — grab the outermost braces.
-  const firstBrace = text.indexOf("{");
-  const firstBracket = text.indexOf("[");
-  const starts = [firstBrace, firstBracket].filter((i) => i >= 0);
-  if (starts.length > 0) {
-    const start = Math.min(...starts);
-    const isArray = text[start] === "[";
-    const end = isArray ? text.lastIndexOf("]") : text.lastIndexOf("}");
-    if (end > start) {
-      text = text.slice(start, end + 1);
-    }
-  }
-  return text.trim();
-}
-
 /**
  * Runs one research call against Claude with the web-search tool enabled,
  * resuming automatically on `pause_turn` (the server-side tool loop's own
  * iteration cap), then parses + validates the final text as JSON.
  */
-export async function runResearchCall<T extends ZodTypeAny>(params: {
+export async function runAnthropicResearchCall<T extends ZodTypeAny>(params: {
   system: string;
   prompt: string;
   schema: T;
@@ -94,7 +77,7 @@ export async function runResearchCall<T extends ZodTypeAny>(params: {
     throw new Error("Keine Antwort von Claude erhalten (leerer Text nach Recherche-Loop).");
   }
 
-  const cleaned = stripJsonFences(finalText);
+  const cleaned = extractJson(finalText);
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
@@ -110,4 +93,4 @@ export async function runResearchCall<T extends ZodTypeAny>(params: {
   return result.data;
 }
 
-export const CLAUDE_MODEL = MODEL;
+export const ANTHROPIC_MODEL = MODEL;

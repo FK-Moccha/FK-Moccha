@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { runResearchCall } from "@/lib/anthropic";
+import { runResearchCall, AIConfigError, AIBillingError } from "@/lib/ai";
 import {
   categorySchemas,
   RESEARCH_CATEGORIES,
@@ -11,11 +11,19 @@ import { buildPromptSpec } from "./prompts";
 
 export { CATEGORY_LABELS } from "@/lib/researchCategories";
 
-/** Research a single category, retrying once with a simplified prompt on failure. */
+type CategoryResult =
+  | { ok: true; data: unknown }
+  | { ok: false; error: string; fatal: boolean };
+
+/**
+ * Research a single category, retrying once with a simplified prompt on failure.
+ * `fatal: true` marks a setup problem (missing key, no credit) that a retry — or trying
+ * the other categories — won't fix.
+ */
 export async function researchOneCategory(
   briefing: TripBriefing,
   category: ResearchCategory,
-): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+): Promise<CategoryResult> {
   const schema = categorySchemas[category];
 
   for (const simplified of [false, true]) {
@@ -24,14 +32,17 @@ export async function researchOneCategory(
       const data = await runResearchCall({ system, prompt, schema });
       return { ok: true, data };
     } catch (err) {
-      if (simplified) {
+      const fatal = err instanceof AIConfigError || err instanceof AIBillingError;
+      // A missing key or empty billing balance won't be fixed by a simpler prompt —
+      // surface it immediately instead of retrying (and repeating the API call/cost).
+      if (simplified || fatal) {
         const message = err instanceof Error ? err.message : String(err);
-        return { ok: false, error: message };
+        return { ok: false, error: message, fatal };
       }
       // fall through to the simplified retry
     }
   }
-  return { ok: false, error: "Unbekannter Fehler bei der Recherche." };
+  return { ok: false, error: "Unbekannter Fehler bei der Recherche.", fatal: false };
 }
 
 /** Persists one category's result (or error) onto the trip row. */
@@ -83,6 +94,16 @@ export async function runFullPipeline(tripId: string) {
   for (const category of RESEARCH_CATEGORIES) {
     const result = await researchOneCategory(briefing, category);
     await saveCategoryResult(tripId, category, result);
+
+    // A setup problem (missing key, no credit) affects every category identically —
+    // apply the same message to the rest instead of repeating doomed API calls.
+    if (!result.ok && result.fatal) {
+      const remaining = RESEARCH_CATEGORIES.slice(RESEARCH_CATEGORIES.indexOf(category) + 1);
+      for (const rest of remaining) {
+        await saveCategoryResult(tripId, rest, result);
+      }
+      break;
+    }
   }
 
   const finalTrip = await prisma.trip.findUniqueOrThrow({ where: { id: tripId } });
