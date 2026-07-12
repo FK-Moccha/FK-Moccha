@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// A single planned trip. Most research output is stored as JSON blobs
+// (validated against the Zod schemas in src/lib/schemas.ts before saving)
+// since each category has its own nested shape and evolves independently.
+model Trip {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status TripStatus @default(DRAFT)
+
+  // Denormalized briefing fields for fast homepage listing/filtering
+  destination String
+  origin      String
+  startDate   DateTime?
+  endDate     DateTime?
+  flexibleDates Boolean @default(false)
+  adults      Int      @default(1)
+  children    Int      @default(0)
+  budgetTotal Int?
+  bestValue   Boolean  @default(false)
+  travelStyles String  @default("[]") // JSON string array
+
+  // Full briefing answers (TripBriefing shape)
+  briefing String // JSON
+
+  // Research results — each is a JSON-serialized payload matching its Zod schema, or null until researched
+  flights      String?
+  hotels       String?
+  activities   String?
+  transfer     String?
+  restaurants  String?
+  itinerary    String?
+  budget       String?
+  insiderTips  String?
+
+  // Per-category error notes, JSON map of category -> error message
+  researchErrors String @default("{}")
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum TripStatus {
+  DRAFT
+  RESEARCHING
+  READY
+  ERROR
+}
